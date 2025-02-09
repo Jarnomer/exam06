@@ -141,7 +141,7 @@ int main (int ac, char **av) {                    // changed main to take argume
           remove_client(fd);                      // use function to remove fd
           break;                                  // break to run select without fd
         }                                         // if something was received
-        rbuf[bsize] = '\0';                       // terminate read buffer
+        rbuf[bytes] = '\0';                       // terminate read buffer
         msgs[fd] = str_join(msgs[fd], rbuf);      // join buffer with current message
         send_message(fd);                         // send message to other clients
       }
