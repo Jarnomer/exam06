@@ -6,16 +6,13 @@
 
 int    nfds = 0;                     // number of current active fds, see select manpage
 fd_set rfds, wfds, afds;             // read, write and all fds, see select manpage
-
 int  bsize = 1000;                   // how many bytes are read on each receive
 char rbuf[1001], wbuf[42];           // read and write buffers, rbuf needs to fit `\0`
-
-int  ids[424242];                    // array to hold client id's for printing messages
+int  ids[424242];                    // array to hold client ids for messages
 char *msgs[424242];                  // array of messages corresponding the ids
 int  count = 0;                      // used to count current id for ids and msgs
 
-// Unmodified function copied from main
-int extract_message(char **buf, char **msg) {
+int extract_message(char **buf, char **msg) {  // Unmodified function copied from main
   char *newbuf;
   int  i;
 
@@ -39,8 +36,7 @@ int extract_message(char **buf, char **msg) {
   return (0);
 }
 
-// Unmodified function copied from main
-char *str_join(char *buf, char *add) {
+char *str_join(char *buf, char *add) {  // Unmodified function copied from main
   char *newbuf;
   int  len;
 
