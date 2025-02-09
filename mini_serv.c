@@ -4,14 +4,15 @@
 #include <stdio.h>
 #include <netinet/ip.h>
 
-int  nfds = 0;                       // number of current active fds, see select manpage
-int  rfds, wfds, afds;               // read, write and all fds, see select manpage
-int  bsize = 1024;                   // buffer size for rbuf and wbuf
-char rbuf[bsize + 1], wbuf[bsize];   // read and write buffers, rbuf needs to fit `\0`
-int  csize = 424242;                 // size of presumed maximum allowed clients
-int  ids[csize];                     // array to hold client id's for printing messages
-char *msgs[csize];                   // array of messages corresponding the ids
-int  count = 0                       // used to count current id for ids and msgs
+int    nfds = 0;                     // number of current active fds, see select manpage
+fd_set rfds, wfds, afds;             // read, write and all fds, see select manpage
+
+int  bsize = 1000;                   // how many bytes are read on each receive
+char rbuf[1001], wbuf[42];           // read and write buffers, rbuf needs to fit `\0`
+
+int  ids[424242];                    // array to hold client id's for printing messages
+char *msgs[424242];                  // array of messages corresponding the ids
+int  count = 0;                      // used to count current id for ids and msgs
 
 // Unmodified function copied from main
 int extract_message(char **buf, char **msg) {
@@ -64,7 +65,7 @@ void fatal_error() {                              // function to exit on error
 }
 
 void notify(int current, char *msg) {             // function to notify other clients
-  for (int fd = 0, fd <= nfds, fd++) {            // iterate through all active fds
+  for (int fd = 0; fd <= nfds; fd++) {            // iterate through all active fds
     if (FD_ISSET(fd, &wfds) && fd != current)     // check that fd is in wfds and not current
       send(fd, msg, strlen(msg), 0);              // send message to each client
   }
@@ -106,23 +107,20 @@ int new_socket() {                                // function to initialize the 
 }
 
 int main (int ac, char **av) {                    // changed main to take arguments
-  int sockfd, connfd, len;                        // variables copied directly from main
-
   if (ac != 2) {                                  // added check as per subject criteria
     write(2, "Wrong number of arguments\n", 26);  // write the error message
     exit(1);                                      // call exit()
   }
 
   FD_ZERO(&afds);                                 // macro to clear all fds, see select manpage
-  sockfd = new_socket();                          // replaced main socket creation with function
+  int sockfd = new_socket();                      // replaced main socket creation with function
 
   struct sockaddr_in servaddr;                    // copied from main, removed unused cli
   servaddr.sin_family = AF_INET;                  // copied from main
   servaddr.sin_addr.s_addr = htonl(2130706433);   // copied from main
   servaddr.sin_port = htons(atoi(av[1]));         // copied from main, replaced port with atoi(av[1])
 
-   
-  if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0) {  // see below
+  if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)  // see below
     fatal_error();                                // unmodified if statements copied from main
   if (listen(sockfd, 10) != 0)                    // replaced sysmtemcall failures with error function
     fatal_error();                                // writes error message and calls exit()
@@ -132,11 +130,11 @@ int main (int ac, char **av) {                    // changed main to take argume
     if (select(nfds + 1, &rfds, &wfds, NULL, NULL) < 0)  // use select, check return value, exit on error
       fatal_error();                              // exit on error before accepting connections
     for (int fd = 0; fd <= nfds; fd++) {          // iterate through all active fds
-      if (!FD_ISSET(fd, &rfds));                  // macro to check if fd is found among read fds
+      if (!FD_ISSET(fd, &rfds))                   // macro to check if fd is found among read fds
         continue;                                 // continue to next fd if current fd is reading
       if (fd == sockfd) {                         // check if current fd is new client
-        len = sizeof(servaddr);                   // copied from main, replaced cli with servaddr
-        connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);  // same as above
+        socklen_t len = sizeof(servaddr);         // replaced cli with servaddr, chanted type to socklen_t
+        int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);  // same as above, copied from main
         if (connfd >= 0) {                        // check if accecpt was successful
           new_client(connfd);                     // add connfd as new client
           break;                                  // break to run select with new fd
@@ -144,7 +142,7 @@ int main (int ac, char **av) {                    // changed main to take argume
       } else {                                    // if not new client
         int bytes = recv(fd, rbuf, bsize, 0);     // store received bytes
         if (!bytes) {                             // if zero bytes were received
-          remove_client(fc);                      // use function to remove fd
+          remove_client(fd);                      // use function to remove fd
           break;                                  // break to run select without fd
         }                                         // if something was received
         rbuf[bsize] = '\0';                       // terminate read buffer
