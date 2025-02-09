@@ -126,7 +126,7 @@ int main (int ac, char **av) {                    // changed main to take argume
     fatal_error();                                // writes error message and calls exit()
 
   while(1) {                                      // replaced the rest of the main with while loop
-    nfds = rfds = wfds;                           // assign active fds to read and write fds
+    rfds = wfds = afds;                           // assign active fds to read and write fds
     if (select(nfds + 1, &rfds, &wfds, NULL, NULL) < 0)  // use select, check return value, exit on error
       fatal_error();                              // exit on error before accepting connections
     for (int fd = 0; fd <= nfds; fd++) {          // iterate through all active fds
