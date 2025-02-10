@@ -75,18 +75,28 @@ void notify(int clientFd, char *msg) {
   }
 }
 
+// void message(int fd) {
+//   char *temp, *msg;
+//   sprintf(writeBuf, "client %d: ", clientId[fd]);
+//   while(extract_message(&(clientMsg[fd]), &temp)) {
+//     msg = str_join(writeBuf, temp);
+//     notify(fd, msg);
+//     free(msg);
+//     free(temp);
+//   }
+// }
+
 void message(int fd) {
-  char *temp, *msg;
+  char *temp;
   sprintf(writeBuf, "client %d: ", clientId[fd]);
   while(extract_message(&(clientMsg[fd]), &temp)) {
-    msg = str_join(writeBuf, temp);
-    notify(fd, msg);
-    free(msg);
+    notify(fd, writeBuf);
+    notify(fd, temp);
     free(temp);
   }
 }
 
-void receive(int fd) {
+void append(int fd) {
   if (fd > maxFd) 
     maxFd = fd;
   clientId[fd] = id++;
@@ -134,28 +144,55 @@ int main (int argc, char **argv) {
   if (listen(sockfd, 10) != 0)
     error();
 
-  while(1) {  // replaced the rest of main
-    readFds = writeFds = allFds;  // assign all active fds to read and write fds
+  // while(1) {  // replaced the rest of main
+  //   readFds = writeFds = allFds;  // assign all active fds to read and write fds
+  //   if (select(maxFd + 1, &readFds, &writeFds, NULL, NULL) < 0)
+  //     error();  // select needs maxFd + 1, exit on error 
+  //   for (int fd = 0; fd <= maxFd; fd++) {
+  //     if (!FD_ISSET(fd, &readFds)) {  // not ready to read
+  //       continue;
+  //     } else if (fd == sockfd) {  // new client
+  //       socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
+  //       int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
+  //       if (connfd >= 0)  // no exit on error
+  //         append(connfd);
+  //     } else {
+  //       int bytesRead = recv(fd, readBuf, 1000, 0); // 1001 - 1 = 1000
+  //       if (!bytesRead) {  // client disconnected
+  //         delete(fd);
+  //         continue;
+  //       } else {
+  //         readBuf[bytesRead] = '\0';  // terminate buffer
+  //         clientMsg[fd] = str_join(clientMsg[fd], readBuf);
+  //         message(fd);
+  //       } 
+  //     }
+  //   }
+  // }
+
+  while(1) {
+    readFds = writeFds = allFds;
     if (select(maxFd + 1, &readFds, &writeFds, NULL, NULL) < 0)
-      error();  // select needs maxFd + 1, exit on error 
+      error();
     for (int fd = 0; fd <= maxFd; fd++) {
-      if (!FD_ISSET(fd, &readFds)) {  // not ready to read
+      if (!FD_ISSET(fd, &readFds))
         continue;
-      } else if (fd == sockfd) {  // new client
-        socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
+      if (fd == sockfd) {
+        socklen_t len = sizeof(servaddr);
         int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
-        if (connfd >= 0)  // no exit on error
-          receive(connfd);
+        if (connfd >= 0) {
+          append(connfd);
+          break;
+        }
       } else {
-        int bytesRead = recv(fd, readBuf, 1000, 0); // 1001 - 1 = 1000
-        if (!bytesRead) {  // client disconnected
+        int bytesRead = recv(fd, readBuf, 1000, 0);
+        if (!bytesRead) {
           delete(fd);
-          continue;
-        } else {
-          readBuf[bytesRead] = '\0';  // terminate buffer
-          clientMsg[fd] = str_join(clientMsg[fd], readBuf);
-          message(fd);
-        } 
+          break;
+        }
+        readBuf[bytesRead] = '\0';
+        clientMsg[fd] = str_join(clientMsg[fd], readBuf);
+        message(fd);
       }
     }
   }
