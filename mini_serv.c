@@ -4,16 +4,13 @@
 #include <stdio.h>
 #include <netinet/ip.h>
 
-int maxFd = 0;
-
-fd_set readFds, writeFds, allFds;
-
-char readBuffer[1001];
-char writeBuffer[42];
-
-int clientId[424242];
-char *clientMsg[424242];
-int id = 0;
+int    nfds = 0;
+fd_set rfds, wfds, afds;
+int  bsize = 1000;
+char rbuf[1001], wbuf[42];
+int  ids[424242];
+char *msgs[424242];
+int  count = 0;
 
 // Unmodified function copied from main
 int extract_message(char **buf, char **msg) {
@@ -60,52 +57,51 @@ char *str_join(char *buf, char *add) {
   return (newbuf);
 }
 
-void error() {
+void fatal_error() {
   write(2, "Fatal error\n", 12);
   exit(1);
 }
 
-void notify(int client, char *msg) {
-  for (int fd = 0; fd <= maxFd; fd++) {
-    if (FD_ISSET(fd, &writeFds) && fd != client)
+void notify(int current, char *msg) {
+  for (int fd = 0; fd <= nfds; fd++) {
+    if (FD_ISSET(fd, &wfds) && fd != current)
       send(fd, msg, strlen(msg), 0);
   }
 }
 
-void message(int fd) {
+void send_message(int fd) {
   char *temp;
-  sprintf(writeBuffer, "client %d: ", clientId[fd]);
-  while(extract_message(&(clientMsg[fd]), &temp)) {
-    notify(fd, writeBuffer);
+  while(extract_message(&(msgs[fd]), &temp)) {
+    sprintf(wbuf, "client %d: ", ids[fd]);
+    notify(fd, wbuf);
     notify(fd, temp);
     free(temp);
   }
 }
 
-void append(int fd) {
-  if (fd > maxFd)
-    maxFd = fd;
-  clientId[fd] = id++;
-  FD_SET(fd, &allFds);
-  sprintf(writeBuffer, "server: client %d just arrived\n", clientId[fd]);
-  notify(fd, writeBuffer);
+void new_client(int fd) {
+  nfds = fd > nfds ? fd : nfds;
+  ids[fd] = count++;
+  msgs[fd] = NULL;
+  FD_SET(fd, &afds);
+  sprintf(wbuf, "server: client %d just arrived\n", ids[fd]);
+  notify(fd, wbuf);
 }
 
-void delete(int fd) {
-  sprintf(writeBuffer, "server: client %d just left\n", clientId[fd]);
-  notify(fd, writeBuffer);
-  FD_CLR(fd, &allFds);
-  free(clientMsg[fd]);
+void remove_client(int fd) {
+  sprintf(wbuf, "server: client %d just left\n", ids[fd]);
+  notify(fd, wbuf);
+  FD_CLR(fd, &afds);
+  free(msgs[fd]);
   close(fd);
 }
 
-int init() {
-  maxFd = socket(AF_INET, SOCK_STREAM, 0);
-  if (maxFd < 0)
-    error();
-  FD_ZERO(&allFds);
-  FD_SET(maxFd, &allFds);
-  return maxFd;
+int new_socket() {
+  nfds = socket(AF_INET, SOCK_STREAM, 0);
+  if (nfds < 0)
+    fatal_error();
+  FD_SET(nfds, &afds);
+  return nfds;
 }
 
 int main (int ac, char **av) {
@@ -114,43 +110,68 @@ int main (int ac, char **av) {
     exit(1);
   }
 
-  int sockfd = init();
+  FD_ZERO(&afds);
+  int sockfd = new_socket();
 
   struct sockaddr_in servaddr;
-  bzero(&servaddr, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(2130706433);
   servaddr.sin_port = htons(atoi(av[1]));
 
   if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    error();
+    fatal_error();
   if (listen(sockfd, 10) != 0)
-    error();
+    fatal_error();
 
   while(1) {
-    readFds = writeFds = allFds;
-    if (select(maxFd + 1, &readFds, &writeFds, NULL, NULL) < 0)
-      error();
-    for (int fd = 0; fd <= maxFd; fd++) {
-      if (!FD_ISSET(fd, &readFds))
+    rfds = wfds = afds;
+    if (select(nfds + 1, &rfds, &wfds, NULL, NULL) < 0)
+      fatal_error();
+    for (int fd = 0; fd <= nfds; fd++) {
+      if (!FD_ISSET(fd, &rfds))
         continue;
       if (fd == sockfd) {
         socklen_t len = sizeof(servaddr);
-        int clientFd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
-        if (clientFd >= 0) {
-          append(clientFd);
+        int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
+        if (connfd >= 0) {
+          new_client(connfd);
           break;
         }
       } else {
-        int readBytes = recv(fd, readBuffer, 1000, 0);
-        if (!readBytes) {
-          delete(fd);
+        int bytes = recv(fd, rbuf, bsize, 0);
+        if (!bytes) {
+          remove_client(fd);
           break;
         }
-        readBuffer[readBytes] = '\0';
-        clientMsg[fd] = str_join(clientMsg[fd], readBuffer);
-        message(fd);
+        rbuf[bytes] = '\0';
+        msgs[fd] = str_join(msgs[fd], rbuf);
+        send_message(fd);
       }
     }
   }
+
+  // while(1) {
+  //   rfds = wfds = afds;
+  //   if (select(nfds + 1, &rfds, &wfds, NULL, NULL) < 0)
+  //     fatal_error();
+  //   for (int fd = 0; fd <= nfds; fd++) {
+  //     if (!FD_ISSET(fd, &rfds)) {
+  //       continue;
+  //     } else if (fd == sockfd) { // changed to else if
+  //       socklen_t len = sizeof(servaddr);
+  //       int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
+  //       if (connfd >= 0)
+  //         new_client(connfd);  // removed break here
+  //     } else {
+  //       int bytes = recv(fd, rbuf, bsize, 0);
+  //       if (bytes) {  // flipped !bytes
+  //         rbuf[bytes] = '\0';
+  //         msgs[fd] = str_join(msgs[fd], rbuf);
+  //         send_message(fd);
+  //       } else {  // added else
+  //         remove_client(fd);
+  //       } 
+  //     }
+  //   }
+  // }
 }
