@@ -1,24 +1,21 @@
-#include <string.h>  // headers copied from main
+#include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/ip.h>
 
-int maxFd = 0;  // ndfs, see select manpage
+int maxFd = 0;
 
-// read, write and all fds
 fd_set readFds, writeFds, allFds;
 
-// buffers to read and write messages
-char readBuf[1001];
-char writeBuf[42];
+char readBuffer[1001];
+char writeBuffer[42];
 
-// arrays to store client ids and messages
+int clientId[424242];
 char *clientMsg[424242];
-int  clientId[424242];
-int  id = 0;
+int id = 0;
 
-// Unmodified function from main
+// Unmodified function copied from main
 int extract_message(char **buf, char **msg) {
   char *newbuf;
   int  i;
@@ -43,7 +40,7 @@ int extract_message(char **buf, char **msg) {
   return (0);
 }
 
-// Unmodified function from main
+// Unmodified function copied from main
 char *str_join(char *buf, char *add) {
   char *newbuf;
   int  len;
@@ -68,55 +65,42 @@ void error() {
   exit(1);
 }
 
-void notify(int clientFd, char *msg) {
+void notify(int client, char *msg) {
   for (int fd = 0; fd <= maxFd; fd++) {
-    if (FD_ISSET(fd, &writeFds) && fd != clientFd)
+    if (FD_ISSET(fd, &writeFds) && fd != client)
       send(fd, msg, strlen(msg), 0);
   }
 }
 
-// void message(int fd) {
-//   char *temp, *msg;
-//   sprintf(writeBuf, "client %d: ", clientId[fd]);
-//   while(extract_message(&(clientMsg[fd]), &temp)) {
-//     msg = str_join(writeBuf, temp);
-//     notify(fd, msg);
-//     free(msg);
-//     free(temp);
-//   }
-// }
-
 void message(int fd) {
   char *temp;
-  sprintf(writeBuf, "client %d: ", clientId[fd]);
+  sprintf(writeBuffer, "client %d: ", clientId[fd]);
   while(extract_message(&(clientMsg[fd]), &temp)) {
-    notify(fd, writeBuf);
+    notify(fd, writeBuffer);
     notify(fd, temp);
     free(temp);
   }
 }
 
 void append(int fd) {
-  if (fd > maxFd) 
+  if (fd > maxFd)
     maxFd = fd;
   clientId[fd] = id++;
   FD_SET(fd, &allFds);
-  char *msg = "server: client %d just arrived\n";
-  sprintf(writeBuf, msg, clientId[fd]);
-  notify(fd, writeBuf);
+  sprintf(writeBuffer, "server: client %d just arrived\n", clientId[fd]);
+  notify(fd, writeBuffer);
 }
 
 void delete(int fd) {
-  char *msg = "server: client %d just left\n";
-  sprintf(writeBuf, msg, clientId[fd]);
-  notify(fd, writeBuf);
+  sprintf(writeBuffer, "server: client %d just left\n", clientId[fd]);
+  notify(fd, writeBuffer);
+  FD_CLR(fd, &allFds);
   free(clientMsg[fd]);
   close(fd);
-  FD_CLR(fd, &allFds);
 }
 
 int init() {
-  maxFd = socket(AF_INET, SOCK_STREAM, 0);  // from main
+  maxFd = socket(AF_INET, SOCK_STREAM, 0);
   if (maxFd < 0)
     error();
   FD_ZERO(&allFds);
@@ -124,51 +108,24 @@ int init() {
   return maxFd;
 }
 
-int main (int argc, char **argv) {
-
-  if (argc != 2) {  // added argc check
+int main (int ac, char **av) {
+  if (ac != 2) {
     write(2, "Wrong number of arguments\n", 26);
     exit(1);
   }
 
-  int sockfd = init();  // replaced socket creation
+  int sockfd = init();
 
-  struct sockaddr_in servaddr;  // from main, change port
+  struct sockaddr_in servaddr;
   bzero(&servaddr, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(2130706433);
-  servaddr.sin_port = htons(atoi(argv[1]));
+  servaddr.sin_port = htons(atoi(av[1]));
 
   if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    error();  // if statements from main, replaced error handling
+    error();
   if (listen(sockfd, 10) != 0)
     error();
-
-  // while(1) {  // replaced the rest of main
-  //   readFds = writeFds = allFds;  // assign all active fds to read and write fds
-  //   if (select(maxFd + 1, &readFds, &writeFds, NULL, NULL) < 0)
-  //     error();  // select needs maxFd + 1, exit on error 
-  //   for (int fd = 0; fd <= maxFd; fd++) {
-  //     if (!FD_ISSET(fd, &readFds)) {  // not ready to read
-  //       continue;
-  //     } else if (fd == sockfd) {  // new client
-  //       socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
-  //       int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
-  //       if (connfd >= 0)  // no exit on error
-  //         append(connfd);
-  //     } else {
-  //       int bytesRead = recv(fd, readBuf, 1000, 0); // 1001 - 1 = 1000
-  //       if (!bytesRead) {  // client disconnected
-  //         delete(fd);
-  //         continue;
-  //       } else {
-  //         readBuf[bytesRead] = '\0';  // terminate buffer
-  //         clientMsg[fd] = str_join(clientMsg[fd], readBuf);
-  //         message(fd);
-  //       } 
-  //     }
-  //   }
-  // }
 
   while(1) {
     readFds = writeFds = allFds;
@@ -185,13 +142,13 @@ int main (int argc, char **argv) {
           break;
         }
       } else {
-        int bytesRead = recv(fd, readBuf, 1000, 0);
-        if (!bytesRead) {
+        int bytes = recv(fd, readBuffer, 1000, 0);
+        if (!bytes) {
           delete(fd);
           break;
         }
-        readBuf[bytesRead] = '\0';
-        clientMsg[fd] = str_join(clientMsg[fd], readBuf);
+        readBuffer[bytes] = '\0';
+        clientMsg[fd] = str_join(clientMsg[fd], readBuffer);
         message(fd);
       }
     }
