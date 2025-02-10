@@ -136,18 +136,18 @@ int main (int ac, char **av) {
         continue;
       if (fd == sockfd) {
         socklen_t len = sizeof(servaddr);
-        int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
-        if (connfd >= 0) {
-          append(connfd);
+        int clientFd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
+        if (clientFd >= 0) {
+          append(clientFd);
           break;
         }
       } else {
-        int bytes = recv(fd, readBuffer, 1000, 0);
-        if (!bytes) {
+        int readBytes = recv(fd, readBuffer, 1000, 0);
+        if (!readBytes) {
           delete(fd);
           break;
         }
-        readBuffer[bytes] = '\0';
+        readBuffer[readBytes] = '\0';
         clientMsg[fd] = str_join(clientMsg[fd], readBuffer);
         message(fd);
       }
