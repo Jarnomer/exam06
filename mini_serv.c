@@ -1,15 +1,16 @@
-#include <string.h>         // headers from main
+#include <string.h>         // headers copied from main
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/ip.h>
 
+char *temp;                 // temp to hold extracted message
 int maxfd = 0;              // nfds, see select manpage
 fd_set rfds, wfds, afds;    // read, write and all fds
 char rbuf[1001], wbuf[42];  // read and write buffers for messages
-int ids[424242];            // arrays store and index client ids and messages
-char *msgs[424242];
-int idx = 0;
+char *msgs[424242];         // arrays to store and index client messages and ids
+int ids[424242];
+int id = 0;
 
 // Unmodified function from main
 int extract_message(char **buf, char **msg) {
@@ -56,40 +57,38 @@ char *str_join(char *buf, char *add) {
   return (newbuf);
 }
 
-void fatal_error() {
+void error() {
   write(2, "Fatal error\n", 12);
   exit(1);
 }
 
-void notify(int current, char *msg) {
+void notify(int client, char *msg) {
   for (int fd = 0; fd <= maxfd; fd++) {
-    if (FD_ISSET(fd, &wfds) && fd != current)
+    if (FD_ISSET(fd, &wfds) && fd != client)
       send(fd, msg, strlen(msg), 0);
   }
 }
 
-void send_message(int fd) {
-  char *temp;
+void message(int fd) {
+  msgs[fd] = str_join(msgs[fd], rbuf);
+  sprintf(wbuf, "client %d: ", ids[fd]);
   while(extract_message(&(msgs[fd]), &temp)) {
-    sprintf(wbuf, "client %d: ", ids[fd]);
     notify(fd, wbuf);
     notify(fd, temp);
     free(temp);
   }
 }
 
-void new_client(int fd) {
-  // maxfd = fd > maxfd ? fd : maxfd;
+void append(int fd) {
   if (fd > maxfd)
     maxfd = fd;
-  ids[fd] = idx++;
-  // msgs[fd] = NULL;
+  ids[fd] = id++;
   FD_SET(fd, &afds);
   sprintf(wbuf, "server: client %d just arrived\n", ids[fd]);
   notify(fd, wbuf);
 }
 
-void remove_client(int fd) {
+void delete(int fd) {
   sprintf(wbuf, "server: client %d just left\n", ids[fd]);
   notify(fd, wbuf);
   FD_CLR(fd, &afds);
@@ -97,56 +96,54 @@ void remove_client(int fd) {
   close(fd);
 }
 
-int new_socket() {
-  maxfd = socket(AF_INET, SOCK_STREAM, 0);
+int init() {
+  maxfd = socket(AF_INET, SOCK_STREAM, 0);  // copied from main
   if (maxfd < 0)
-    fatal_error();
+    error();
   FD_ZERO(&afds);
   FD_SET(maxfd, &afds);
   return maxfd;
 }
 
 int main (int ac, char **av) {
-  if (ac != 2) {
+  if (ac != 2) {  // add argc check
     write(2, "Wrong number of arguments\n", 26);
     exit(1);
   }
 
-  // FD_ZERO(&afds);
-  int sockfd = new_socket();
+  int sockfd = init();  // change socket creation
 
-  struct sockaddr_in servaddr;
+  struct sockaddr_in servaddr;  // copied from main, replace port
   bzero(&servaddr, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(2130706433);
   servaddr.sin_port = htons(atoi(av[1]));
 
   if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    fatal_error();
+    error();  // if statements copied from main, change error handling
   if (listen(sockfd, 10) != 0)
-    fatal_error();
+    error();
 
   while(1) {
-    rfds = wfds = afds;
+    rfds = wfds = afds;  // set read and write fds to active fds
     if (select(maxfd + 1, &rfds, &wfds, NULL, NULL) < 0)
-      fatal_error();
+      error();  // needs maxfd + 1, exit on error
     for (int fd = 0; fd <= maxfd; fd++) {
-      if (!FD_ISSET(fd, &rfds)) {
+      if (!FD_ISSET(fd, &rfds)) {  // if not ready to read
         continue;
-      } else if (fd == sockfd) {
-        socklen_t len = sizeof(servaddr);
+      } else if (fd == sockfd) {  // if new client
+        socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
         int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
         if (connfd >= 0)
-          new_client(connfd);
+          append(connfd);
       } else {
         int bytes = recv(fd, rbuf, 1000, 0);
-        if (bytes) {
-          rbuf[bytes] = '\0';
-          msgs[fd] = str_join(msgs[fd], rbuf);
-          send_message(fd);
+        if (bytes <= 0) {  // client disconnected
+          delete(fd);
         } else {
-          remove_client(fd);
-        } 
+          rbuf[bytes] = '\0';  // terminate buffer
+          message(fd);
+        }
       }
     }
   }
