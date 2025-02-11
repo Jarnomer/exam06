@@ -8,7 +8,7 @@ char *temp;                 // temp to hold extracted message
 int maxfd = 0;              // nfds, see select manpage
 fd_set rfds, wfds, afds;    // read, write and all fds
 char rbuf[1001], wbuf[42];  // read and write buffers for messages
-char *msgs[424242];         // arrays to store and index client messages and ids
+char *msgs[424242];         // arrays to store client messages and ids
 int ids[424242];
 int id = 0;
 
@@ -137,7 +137,7 @@ int main (int ac, char **av) {
         if (connfd >= 0)
           append(connfd);
       } else {
-        int bytes = recv(fd, rbuf, 1000, 0);
+        int bytes = recv(fd, rbuf, 1000, 0);  // 1001 - 1 = 1000
         if (bytes <= 0) {  // client disconnected
           delete(fd);
         } else {
