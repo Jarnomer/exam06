@@ -1,5 +1,5 @@
 #include <string.h>         // headers copied from main
-#include <unistd.h>
+#include <unistd.h>         // OR add from manpages
 #include <stdlib.h>
 #include <stdio.h>
 #include <netinet/ip.h>
@@ -57,49 +57,49 @@ char *str_join(char *buf, char *add) {
   return (newbuf);
 }
 
-void error() {
+void fatal_error() {
   write(2, "Fatal error\n", 12);
   exit(1);
 }
 
-void notify(int client, char *msg) {
+void notify_clients(int client, char *msg) {
   for (int fd = 0; fd <= maxfd; fd++) {
     if (FD_ISSET(fd, &wfds) && fd != client)
       send(fd, msg, strlen(msg), 0);
   }
 }
 
-void message(int fd) {
+void send_message(int fd) {
   msgs[fd] = str_join(msgs[fd], rbuf);
   sprintf(wbuf, "client %d: ", ids[fd]);
   while(extract_message(&(msgs[fd]), &temp)) {
-    notify(fd, wbuf);
-    notify(fd, temp);
+    notify_clients(fd, wbuf);
+    notify_clients(fd, temp);
     free(temp);
   }
 }
 
-void append(int fd) {
+void append_client(int fd) {
   if (fd > maxfd)
     maxfd = fd;
   ids[fd] = id++;
   FD_SET(fd, &afds);
   sprintf(wbuf, "server: client %d just arrived\n", ids[fd]);
-  notify(fd, wbuf);
+  notify_clients(fd, wbuf);
 }
 
-void delete(int fd) {
+void delete_client(int fd) {
   sprintf(wbuf, "server: client %d just left\n", ids[fd]);
-  notify(fd, wbuf);
+  notify_clients(fd, wbuf);
   FD_CLR(fd, &afds);
   free(msgs[fd]);
   close(fd);
 }
 
-int init() {
+int init_socket() {
   maxfd = socket(AF_INET, SOCK_STREAM, 0);  // copied from main
   if (maxfd < 0)
-    error();
+    fatal_error();
   FD_ZERO(&afds);
   FD_SET(maxfd, &afds);
   return maxfd;
@@ -111,7 +111,7 @@ int main (int ac, char **av) {
     exit(1);
   }
 
-  int sockfd = init();  // change socket creation
+  int sockfd = init_socket();  // replace socket creation
 
   struct sockaddr_in servaddr;  // copied from main, replace port
   bzero(&servaddr, sizeof(servaddr));
@@ -120,29 +120,29 @@ int main (int ac, char **av) {
   servaddr.sin_port = htons(atoi(av[1]));
 
   if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    error();  // if statements copied from main, change error handling
+    fatal_error();  // if statements copied from main, change error handling
   if (listen(sockfd, 10) != 0)
-    error();
+    fatal_error();
 
   while(1) {
-    rfds = wfds = afds;  // set read and write fds to active fds
+    rfds = wfds = afds;  // set read and write fds to all active fds
     if (select(maxfd + 1, &rfds, &wfds, NULL, NULL) < 0)
-      error();  // needs maxfd + 1, exit on error
+      fatal_error();  // needs maxfd + 1, exit on error
     for (int fd = 0; fd <= maxfd; fd++) {
       if (!FD_ISSET(fd, &rfds)) {  // if not ready to read
         continue;
       } else if (fd == sockfd) {  // if new client
         socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
-        int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);
+        int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);  // from main
         if (connfd >= 0)
-          append(connfd);
+          append_client(connfd);
       } else {
-        int bytes = recv(fd, rbuf, 1000, 0);  // 1001 - 1 = 1000
+        int bytes = recv(fd, rbuf, sizeof(rbuf) - 1, 0);
         if (bytes <= 0) {  // client disconnected
-          delete(fd);
+          delete_client(fd);
         } else {
           rbuf[bytes] = '\0';  // terminate buffer
-          message(fd);
+          send_message(fd);
         }
       }
     }
