@@ -64,7 +64,7 @@ void fatal_error() {
 
 void notify_clients(int client, char *msg) {
   for (int fd = 0; fd <= maxfd; fd++) {
-    if (FD_ISSET(fd, &wfds) && fd != client)
+    if (FD_ISSET(fd, &wfds) && fd != client)  // ready to write and not client
       send(fd, msg, strlen(msg), 0);
   }
 }
@@ -106,38 +106,36 @@ int init_socket() {
 }
 
 int main (int ac, char **av) {
-  if (ac != 2) {  // add argc check
+  if (ac != 2) {  // added argc check
     write(2, "Wrong number of arguments\n", 26);
     exit(1);
   }
 
-  int sockfd = init_socket();  // replace socket creation
+  int sockfd = init_socket();  // replaced socket creation
 
-  struct sockaddr_in servaddr;  // copied from main, replace port
+  struct sockaddr_in servaddr;  // copied from main, replaced port
   bzero(&servaddr, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_addr.s_addr = htonl(2130706433);
   servaddr.sin_port = htons(atoi(av[1]));
 
   if ((bind(sockfd, (const struct sockaddr *)&servaddr, sizeof(servaddr))) != 0)
-    fatal_error();  // if statements copied from main, change error handling
+    fatal_error();  // if statements copied from main, changed error handling
   if (listen(sockfd, 10) != 0)
     fatal_error();
 
   while(1) {
     rfds = wfds = afds;  // set read and write fds to all active fds
     if (select(maxfd + 1, &rfds, &wfds, NULL, NULL) < 0)
-      fatal_error();  // needs maxfd + 1, exit on error
+      fatal_error();  // needs maxfd + 1, see manpage, exit on error
     for (int fd = 0; fd <= maxfd; fd++) {
-      if (!FD_ISSET(fd, &rfds)) {  // if not ready to read
-        continue;
-      } else if (fd == sockfd) {  // if new client
+      if (fd == sockfd) {  // new client
         socklen_t len = sizeof(servaddr);  // from main, has to be socklen_t
         int connfd = accept(sockfd, (struct sockaddr *)&servaddr, &len);  // from main
         if (connfd >= 0)
-          append_client(connfd);
-      } else {
-        int bytes = recv(fd, rbuf, sizeof(rbuf) - 1, 0);
+          append_client(connfd);  // connfd, not fd!
+      } else if (FD_ISSET(fd, &rfds)) {  // ready to read
+        int bytes = recv(fd, rbuf, sizeof(rbuf) - 1, 0);  // sizeof(rbuf) - 1 for null
         if (bytes <= 0) {  // client disconnected
           delete_client(fd);
         } else {
