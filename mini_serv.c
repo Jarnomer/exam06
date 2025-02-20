@@ -6,7 +6,7 @@
 
 char *temp;                 // temp to hold extracted message
 int maxfd = 0;              // nfds, see select manpage
-fd_set rfds, wfds, afds;    // read, write and all fds
+fd_set rfds, wfds, afds;    // read, write and all fd sets
 char rbuf[1001], wbuf[42];  // read and write buffers for messages
 char *msgs[424242];         // arrays to store client messages and ids
 int ids[424242];
